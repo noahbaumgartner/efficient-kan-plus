@@ -14,6 +14,8 @@ I instead replace the L1 regularization with a L1 regularization on the weights,
 The author's implementation indeed include this kind of regularization alongside the one described in the paper as well, so I think it might help.
 More experiments are needed to verify this; but at least the original approach is infeasible if efficiency is wanted.
 
+Those experiments turned out to matter: on the worked example below, the weight-based penalty leaves several extra edges visibly active even after training that the paper's own sparsification examples show as fully suppressed. This fork adds `activation_regularization_loss()` (see "Simplification techniques" below) as an opt-in alternative that pays for the `(batch, out, in)` expansion to compute the real, paper-matching penalty — the training-time cost the note above says is infeasible "if efficiency is wanted," offered here for when interpretability matters more than that.
+
 Another difference is that, beside the learnable activation functions (B-splines), the original implementation also includes a learnable scale on each activation function.
 I provided an option `enable_standalone_scale_spline` that defaults to `True` to include this feature; disable it will make the model more efficient, but potentially hurts results.
 It needs more experiments.
@@ -36,3 +38,17 @@ model.extend_grid(x_sample, new_grid_size=10)
 ```
 
 `x_sample` should be a representative batch of inputs to the model (`(batch_size, in_features)`); it's used both to evaluate the current spline function and to fit the new one, and is propagated layer by layer so every layer is refit against the inputs it actually sees.
+
+## Simplification techniques: sparsification, visualization, pruning, and symbolification
+
+The KAN paper (Section 2.5, "Simplifying KANs and Making them interactive") frames these as *simplification techniques*, driven interactively by a human rather than a black-box symbolic regressor. This fork adds pykan-style tooling for all four on top of the efficient forward pass:
+
+- **`model.activation_regularization_loss(x)`** — a second sparsification loss, alongside the weight-based `regularization_loss()` from the section above. That one is free (no extra tensor, no extra forward pass) but, per the note above, doesn't concentrate importance onto as few edges as the paper's examples show, since spline-weight magnitude isn't the same thing as how much an edge's output actually varies over the data. This version computes real per-edge activations (deliberately paying for the `(batch, out, in)` tensor `regularization_loss()` avoids) and penalizes those instead, matching the paper's actual regularizer far more closely — compare the "before/after training" panels in `examples/simplification_techniques.ipynb` with each loss to see the difference directly.
+- **`model.plot(x=None, in_vars=None, out_vars=None)`** draws the network as a diagram: one node per neuron, one small curve per edge showing that edge's learned 1D activation function, faded by how much it actually contributes to the output. Defaults to whatever input the model last saw (`model(x_train); model.plot()`), so you don't have to pass data in twice.
+- **`model.prune(x=None, node_th=1e-2)`** removes hidden nodes whose incoming *and* outgoing edges are all below the importance threshold, returning a new, smaller `KAN` — predictions for the nodes that remain are unchanged. Input and output nodes are never pruned.
+- **`model.fix_symbolic(l, i, j, name)`** / **`model.auto_symbolic(lib=None, r2_threshold=0.9)`** replace individual edges (or, for `auto_symbolic`, every edge that clears the R² threshold) with the best-fitting function from a small library (`x`, `x^2`, `x^3`, `x^4`, `exp`, `log`, `sqrt`, `tanh`, `sin`, `abs`), fit as `c * f(a*x + b) + d` via least squares (`scipy.optimize.curve_fit`).
+- **`model.symbolic_formula(var=['x1', 'x2'])`** assembles the fixed edges into a closed-form `sympy` expression per output.
+
+Under the hood, per-edge quantities (`KANLinear.edge_outputs`, `.edge_importance`, `.edge_curve`) are computed by briefly expanding to the `(batch, out_features, in_features)` tensor the rest of this codebase deliberately avoids — fine for analysis/visualization and for `activation_regularization_loss`, none of which are on the hot inference path. The normal `forward()` stays on the fast matmul path unless an edge has actually been fixed symbolically.
+
+See [`examples/simplification_techniques.ipynb`](examples/simplification_techniques.ipynb) for the full workflow (train → visualize → prune → visualize → symbolify → recovered formula) on the same $f(x, y) = \exp(\sin(\pi x) + y^2)$ benchmark used above.
