@@ -24,6 +24,21 @@ It needs more experiments.
 For now I've changed both the `base_weight` and `spline_scaler` matrices to be initialized with `kaiming_uniform_`, following `nn.Linear`'s initialization.
 It seems to work much much better on MNIST (~20% to ~97%), but I'm not sure if it's a good idea in general.
 
+## Setup
+
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management. With uv installed, set up a local environment from the committed lockfile:
+
+```bash
+uv sync
+```
+
+This creates a `.venv` with all dependencies from `pyproject.toml`/`uv.lock` (PyTorch, torchvision, matplotlib, scipy, sympy, pytest, ipykernel). Run scripts and notebooks through it, e.g.:
+
+```bash
+uv run python examples/mnist.py
+uv run jupyter notebook examples/grid_extension.ipynb
+```
+
 ## Grid extension
 
 `KANLinear`/`KAN` already support `update_grid`, which redistributes the existing grid points to better match the input distribution, but keeps `grid_size` fixed.

@@ -1,9 +1,10 @@
 [project]
-name = "efficient-kan"
+name = "efficient-kan-plus"
 version = "0.1.0"
 description = "An efficient pure-PyTorch implementation of Kolmogorov-Arnold Network (KAN)."
 authors = [
     {name = "Blealtan Cao", email = "blealtan@outlook.com"},
+    {name = "Noah Baumgartner", email = "baumgartner.noah@outlook.com"},
 ]
 dependencies = [
     "torch>=2.3.0",
